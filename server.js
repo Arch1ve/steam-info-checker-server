@@ -1,16 +1,19 @@
 const express = require('express');
 const { Client } = require('pg');
-
 const bodyParser = require('body-parser');
+const cors = require('cors')
 
 const app = express();
 const port = 3000; // Порт, на котором будет работать сервер
 
+const corsOptions = {
+  origin: '*', // домен сервиса, с которого будут приниматься запросы
+  optionsSuccessStatus: 200 // для старых браузеров
+}
+
 // Парсинг данных application/json
 app.use(bodyParser.json());
-
-
-
+app.use(cors(corsOptions));
 
 const config = {
   connectionString:
@@ -44,7 +47,6 @@ app.get('/users', async (req, res) => {
 app.post('/user/register', async (req, res) => {
   
   const { username, email, password } = req.body;
-  console.log(username, email, password)
 
     const query = {
         text: 'INSERT INTO users(username, email, password) VALUES($1, $2, $3) RETURNING *',
