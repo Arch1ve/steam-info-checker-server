@@ -1,6 +1,8 @@
 const express = require('express');
 const { Client } = require('pg');
 const bodyParser = require('body-parser');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const cors = require('cors')
 const shell = require('shelljs')
 
@@ -12,10 +14,9 @@ const updateClient = () => {
   shell.exec('cd ../client/steam-info-checker-client && git pull && npm install && npm run build'    )
 }
 
-
 const app = express();
 const port = 3000; // Порт, на котором будет работать сервер
-
+const secretKey = '12345';
 const corsOptions = {
   origin: '*', // домен сервиса, с которого будут приниматься запросы
   optionsSuccessStatus: 200 // для старых браузеров
@@ -53,29 +54,42 @@ app.get('/users', async (req, res) => {
   }
 });
 
-// Обработчик POST запроса для создания пользователя
-app.post('/user/register', async (req, res) => {
-  
+app.post('/users/register', async (req, res) => {
   const { username, email, password } = req.body;
+    
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: 'Все поля обязательны' });
+}
 
-    const query = {
-        text: 'INSERT INTO users(username, email, password) VALUES($1, $2, $3) RETURNING *',
-        values: [username, email, password],
-    };
+try {
+    // Создание соли вручную
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-    try {
-        const result = await database.query(query);
-        res.status(201).json({ message: 'Пользователь успешно создан', user: result.rows[0] });
-    } catch (err) {
-        console.error('Ошибка при создании пользователя:', err);
-        res.status(500).json({ error: 'Ошибка сервера при создании пользователя' });
-    }
+    const token = jwt.sign({ username, email }, secretKey, { expiresIn: '10000000d' });
+  console.log(username, email, password)
+
+      const query = {
+          text: 'INSERT INTO users(username, email, password, token) VALUES($1, $2, $3, $4) RETURNING *',
+          values: [username, email, hashedPassword, token],
+      };
+
+      const result = await database.query(query);
+      res.status(201).json({ message: 'Пользователь успешно создан', user: result.rows[0] });
+  } catch (err) {
+      console.error('Ошибка при создании пользователя:', err);
+      res.status(500).json({ error: 'Ошибка сервера при создании пользователя' });
+  }
 });
 
 
 
 app.post('/user/login', async (req, res) => {
   const { login, password } = req.body;
+
+  if (!login || !password) {
+    return res.status(400).json({ error: 'Логин и пароль обязательны' });
+}
 
   const query = {
       text: 'SELECT * FROM users WHERE username = $1 OR email = $2',
@@ -90,22 +104,35 @@ app.post('/user/login', async (req, res) => {
       }
 
       const user = result.rows[0];
+      const isValidPassword = await bcrypt.compare(password, user.password);
 
-      const isValidPassword = password === user.password
       if (!isValidPassword) {
           return res.status(401).json({ error: 'Неправильный логин или пароль' });
       }
 
-      // Генерация и возвращение токена (например, JWT)
-      // const token = generateJWT(user); // Предполагается, что у вас есть функция для генерации JWT
-      // res.json({ message: 'Успешный вход', token });
+      res.json({ message: 'Успешный вход', token });
 
-      res.json({ message: 'Успешный вход', user: { username: user.username, email: user.email } });
 
   } catch (err) {
       console.error('Ошибка при входе пользователя:', err);
       res.status(500).json({ error: 'Ошибка сервера при входе пользователя' });
   }
+});
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token, secretKey, (err, user) => {
+      if (err) return res.sendStatus(403);
+      req.user = user;
+      next();
+  });
+};
+
+app.get('/user/protected', authenticateToken, (req, res) => {
+  res.json({ message: 'Доступ к защищенному ресурсу предоставлен', user: req.user });
 });
 
 app.get('/trade_items', async (req, res) => {
