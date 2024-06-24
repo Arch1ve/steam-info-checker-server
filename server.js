@@ -2,6 +2,16 @@ const express = require('express');
 const { Client } = require('pg');
 const bodyParser = require('body-parser');
 const cors = require('cors')
+const shell = require('shelljs')
+
+const updateServer = () => {
+    shell.exec('git pull && npm install && pm2 restart server')
+}
+
+const updateClient = () => {
+  shell.exec('cd ../client/steam-info-checker-client && git pull && npm install && npm run build'    )
+}
+
 
 const app = express();
 const port = 3000; // Порт, на котором будет работать сервер
@@ -98,9 +108,6 @@ app.post('/user/login', async (req, res) => {
   }
 });
 
-
-
-
 app.get('/trade_items', async (req, res) => {
   try {
     const result = await database.query('SELECT users.username, trade_items.item_link, trade_items.price, trade_items.quantity FROM users JOIN trade_items ON users.id = trade_items.user_id;');
@@ -109,6 +116,31 @@ app.get('/trade_items', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).send('Server Error');
+  }
+});
+
+app.post('/update/server', async (req, res) => {
+  
+  const { password } = req.body;
+  
+  if (password === "DrowRanger") {
+    updateServer()
+    res.status(200).send("Success")
+  } else {
+    res.status(500).json({ error: 'Wrong password' });
+  }
+
+});
+
+app.post('/update/client', async (req, res) => {
+  
+  const { password } = req.body;
+
+  if (password === "DrowRanger") {
+    updateClient()
+    res.status(200).send("Success")
+  } else {
+    res.status(500).json({ error: 'Wrong password' });
   }
 });
 
